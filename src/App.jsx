@@ -5,6 +5,7 @@ import {
 } from "./vault.js";
 
 const AUTO_LOCK_SECONDS = 30;
+const CLIPBOARD_CLEAR_SECONDS = 30;
 
 const errorMessage = (error) => (error instanceof Error ? error.message : String(error));
 
@@ -218,6 +219,7 @@ function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const timer = useRef(null);
 
   useEffect(() => () => clearInterval(timer.current), []);
@@ -225,6 +227,34 @@ function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
   useEffect(() => {
     if (plain && secondsLeft === 0) lock();
   }, [plain, secondsLeft]);
+
+  // Re-seal immediately when the user switches tab or minimises the window.
+  useEffect(() => {
+    const onVisibilityChange = () => { if (document.hidden) lock(); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  async function copy() {
+    await navigator.clipboard.writeText(plain.body);
+    setCopied(true);
+    const copiedText = plain.body;
+    setTimeout(async () => {
+      setCopied(false);
+      try {
+        // Only wipe the clipboard if it still holds our secret.
+        if ((await navigator.clipboard.readText()) === copiedText) await navigator.clipboard.writeText("");
+      } catch {
+        await navigator.clipboard.writeText("").catch(() => {});
+      }
+    }, CLIPBOARD_CLEAR_SECONDS * 1000);
+  }
+
+  function remove() {
+    if (window.confirm("Delete this item permanently? The ciphertext will be erased and cannot be recovered.")) {
+      onRemove();
+    }
+  }
 
   function lock() {
     clearInterval(timer.current);
@@ -259,14 +289,17 @@ function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
           {plain
             ? <>
                 <span className="countdown">Re-locks in {secondsLeft}s</span>
-                <button className="button quiet" onClick={() => navigator.clipboard.writeText(plain.body)}>Copy</button>
+                <button className="button quiet" onClick={copy}
+                  title={`Clipboard is cleared after ${CLIPBOARD_CLEAR_SECONDS}s`}>
+                  {copied ? `Copied · clears in ${CLIPBOARD_CLEAR_SECONDS}s` : "Copy"}
+                </button>
                 <button className="button quiet" onClick={lock}>Lock</button>
               </>
             : <button className={`button ${canDecrypt ? "primary" : "quiet"}`} onClick={unlock} disabled={busy}
                 title={canDecrypt ? "" : "Your session lacks the decrypt permission; the attempt will be refused"}>
                 {busy ? "Decrypting…" : canDecrypt ? "Unlock" : "Try to unlock (no permission)"}
               </button>}
-          <button className="button text" onClick={onRemove}>Delete</button>
+          <button className="button text" onClick={remove}>Delete</button>
         </div>
       </div>
       {plain
