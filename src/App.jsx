@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useTideCloak } from "@tidecloak/react";
+import { DEMO_ROLES, useVaultAuth } from "./auth.jsx";
 import {
   CATEGORIES, decryptItem, decryptRole, encryptItem, encryptRole, loadItems, rawStorage, saveItems,
 } from "./vault.js";
@@ -9,8 +9,8 @@ const AUTO_LOCK_SECONDS = 30;
 const errorMessage = (error) => (error instanceof Error ? error.message : String(error));
 
 export default function App() {
-  const tide = useTideCloak();
-  const { authenticated, isInitializing, isLoading, initError, login, logout, getValueFromToken } = tide;
+  const tide = useVaultAuth();
+  const { mode, authenticated, isInitializing, isLoading, initError, login, logout, getValueFromToken } = tide;
 
   useEffect(() => {
     if (location.pathname === "/auth/redirect" && !isInitializing) {
@@ -30,9 +30,20 @@ export default function App() {
           </span>
           {authenticated
             ? <button className="button quiet" onClick={logout}>Log out</button>
-            : <button className="button primary" onClick={login} disabled={isLoading}>Log in with TideCloak</button>}
+            : <button className="button primary" onClick={login} disabled={isLoading}>
+                {mode === "demo" ? "Log in (demo)" : "Log in with TideCloak"}
+              </button>}
         </div>
       </header>
+
+      {mode === "demo" && (
+        <div className="notice demo" role="note">
+          <span>
+            <b>DEMO MODE.</b> No TideCloak adapter config was found, so login, roles and encryption are
+            simulated locally with WebCrypto. Add <code>public/tidecloak.json</code> to run on real TideCloak.
+          </span>
+        </div>
+      )}
 
       {initError && (
         <div className="notice error" role="alert">
@@ -123,6 +134,8 @@ function Vault({ tide }) {
           <button aria-label="Dismiss" onClick={() => setNotice(null)}>×</button>
         </div>
       )}
+
+      {tide.mode === "demo" && <DemoRolePanel roles={tide.demoRoles} onToggle={tide.toggleDemoRole} />}
 
       {showStorage && <StorageInspector userId={userId} items={items} />}
 
@@ -247,9 +260,9 @@ function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
                 <button className="button quiet" onClick={() => navigator.clipboard.writeText(plain.body)}>Copy</button>
                 <button className="button quiet" onClick={lock}>Lock</button>
               </>
-            : <button className="button primary" onClick={unlock} disabled={busy || !canDecrypt}
-                title={canDecrypt ? "" : "Your session lacks the decrypt permission"}>
-                {busy ? "Decrypting…" : canDecrypt ? "Unlock" : "No permission"}
+            : <button className={`button ${canDecrypt ? "primary" : "quiet"}`} onClick={unlock} disabled={busy}
+                title={canDecrypt ? "" : "Your session lacks the decrypt permission; the attempt will be refused"}>
+                {busy ? "Decrypting…" : canDecrypt ? "Unlock" : "Try to unlock (no permission)"}
               </button>}
           <button className="button text" onClick={onRemove}>Delete</button>
         </div>
@@ -259,6 +272,22 @@ function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
         : <code className="ciphertext">{item.ciphertext.value.slice(0, 120)}…</code>}
       {error && <p className="item-error">{error}</p>}
     </article>
+  );
+}
+
+function DemoRolePanel({ roles, onToggle }) {
+  return (
+    <details className="demo-roles">
+      <summary>Simulated admin console: grant or revoke realm roles</summary>
+      <div className="demo-role-list">
+        {DEMO_ROLES.map((role) => (
+          <label key={role}>
+            <input type="checkbox" checked={roles.includes(role)} onChange={() => onToggle(role)} />
+            <code>{role}</code>
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }
 

@@ -1,13 +1,15 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { TideCloakContextProvider } from "@tidecloak/react";
+import { VaultAuthProvider, detectMode } from "./auth.jsx";
 import App from "./App.jsx";
 import "./style.css";
 
-createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <TideCloakContextProvider configUrl="/tidecloak.json">
-      <App />
-    </TideCloakContextProvider>
-  </React.StrictMode>,
-);
+detectMode().then((mode) => {
+  createRoot(document.getElementById("root")).render(
+    <React.StrictMode>
+      <VaultAuthProvider mode={mode}>
+        <App />
+      </VaultAuthProvider>
+    </React.StrictMode>,
+  );
+});
