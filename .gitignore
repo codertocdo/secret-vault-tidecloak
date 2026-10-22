@@ -4,3 +4,6 @@ dist/
 .env.*
 # Per-environment TideCloak adapter config, downloaded from the TideCloak admin console
 public/tidecloak.json
+
+# Ciphertext store written by the API server
+server/data/

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useVaultAuth } from "./auth.jsx";
 import {
-  CATEGORIES, decryptItem, decryptRole, encryptItem, encryptRole, loadItems, rawStorage, saveItems,
+  CATEGORIES, createItem, decryptItem, decryptRole, deleteItem, encryptItem, encryptRole, listItems,
 } from "./vault.js";
 
 const AUTO_LOCK_SECONDS = 30;
@@ -73,9 +73,9 @@ function Landing() {
 }
 
 function Vault({ tide }) {
-  const { doEncrypt, doDecrypt, hasRealmRole, getValueFromToken } = tide;
-  const userId = getValueFromToken("sub");
-  const [items, setItems] = useState(() => loadItems(userId));
+  const { doEncrypt, doDecrypt, hasRealmRole, apiFetch } = tide;
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].id);
   const [showStorage, setShowStorage] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -85,25 +85,40 @@ function Vault({ tide }) {
   const canDecrypt = hasRealmRole(decryptRole(category.tag));
   const visibleItems = items.filter((item) => item.category === category.id);
 
-  function persist(next) {
-    setItems(next);
-    saveItems(userId, next);
-  }
+  useEffect(() => {
+    listItems(apiFetch)
+      .then(setItems)
+      .catch((error) => setNotice({ type: "error", text: `Could not load the vault: ${errorMessage(error)}` }))
+      .finally(() => setLoading(false));
+    // Load once per mounted vault; apiFetch identity changes on every token refresh.
+  }, []);
 
   async function addItem(draft) {
+    let encrypted;
     try {
-      const item = await encryptItem(doEncrypt, category, draft);
-      persist([item, ...items]);
-      setNotice({ type: "ok", text: "Encrypted by TideCloak and stored. Only ciphertext left your browser." });
-      return true;
+      encrypted = await encryptItem(doEncrypt, category, draft);
     } catch (error) {
       setNotice({ type: "error", text: `Encryption refused: ${errorMessage(error)}` });
       return false;
     }
+    try {
+      const stored = await createItem(apiFetch, encrypted);
+      setItems((current) => [stored, ...current]);
+      setNotice({ type: "ok", text: "Encrypted in your browser and stored on the server. The server only received ciphertext." });
+      return true;
+    } catch (error) {
+      setNotice({ type: "error", text: `Could not save: ${errorMessage(error)}` });
+      return false;
+    }
   }
 
-  function removeItem(id) {
-    persist(items.filter((item) => item.id !== id));
+  async function removeItem(id) {
+    try {
+      await deleteItem(apiFetch, id);
+      setItems((current) => current.filter((item) => item.id !== id));
+    } catch (error) {
+      setNotice({ type: "error", text: `Could not delete: ${errorMessage(error)}` });
+    }
   }
 
   return (
@@ -138,7 +153,7 @@ function Vault({ tide }) {
 
       {tide.mode === "demo" && <DemoRolePanel roles={tide.demoRoles} onToggle={tide.toggleDemoRole} />}
 
-      {showStorage && <StorageInspector userId={userId} items={items} />}
+      {showStorage && <StorageInspector items={items} />}
 
       <p className="hint">{category.hint}</p>
       <NewItemForm key={category.id} category={category} disabled={!canEncrypt} onSubmit={addItem} />
@@ -154,7 +169,8 @@ function Vault({ tide }) {
             onRemove={() => removeItem(item.id)}
           />
         ))}
-        {visibleItems.length === 0 && (
+        {loading && <p className="empty">Loading encrypted records…</p>}
+        {!loading && visibleItems.length === 0 && (
           <p className="empty">Nothing stored here yet. Save one above, then use Unlock to read it back.</p>
         )}
       </div>
@@ -332,14 +348,17 @@ function DemoRolePanel({ roles, onToggle }) {
   );
 }
 
-function StorageInspector({ userId, items }) {
+function StorageInspector({ items }) {
   return (
     <section className="inspector-panel">
       <div className="inspector-head">
-        <strong>Raw storage</strong>
-        <span className="muted">This is everything a database admin or attacker would see. No titles, no plaintext.</span>
+        <strong>Raw records on the server</strong>
+        <span className="muted">
+          Exactly what the API stores in <code>server/data/vault.json</code>: what a database admin or attacker would see.
+          No titles, no plaintext.
+        </span>
       </div>
-      <pre>{JSON.stringify(JSON.parse(rawStorage(userId)), null, 2)}</pre>
+      <pre>{JSON.stringify(items, null, 2)}</pre>
       <small className="muted">{items.length} encrypted record(s)</small>
     </section>
   );

@@ -4,17 +4,24 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -n api,web -c cyan,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --watch server/index.js",
+    "dev:web": "vite",
+    "start:api": "node server/index.js",
+    "test": "node --test server/app.test.js",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tidecloak/react": "^0.14.33",
+    "express": "^5.3.0",
+    "jose": "^6.2.13",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^10.0.6",
     "vite": "^6.3.5"
   }
 }

@@ -1,6 +1,6 @@
-// Vault storage and TideCloak crypto helpers.
+// Vault API client and TideCloak crypto helpers.
 //
-// The storage layer is treated as untrusted: it only ever receives ciphertext.
+// The server is treated as untrusted: it only ever receives ciphertext.
 // Titles and bodies are encrypted together, so even item names never leave the
 // browser in plaintext.
 
@@ -22,23 +22,24 @@ export const CATEGORIES = [
 export const encryptRole = (tag) => `_tide_${tag}.selfencrypt`;
 export const decryptRole = (tag) => `_tide_${tag}.selfdecrypt`;
 
-const storageKey = (userId) => `secret-vault:${userId}`;
-
-export function loadItems(userId) {
-  try {
-    return JSON.parse(localStorage.getItem(storageKey(userId))) ?? [];
-  } catch {
-    return [];
+async function request(apiFetch, path, init = {}) {
+  const response = await apiFetch(`/api${path}`, {
+    ...init,
+    headers: { "content-type": "application/json", ...init.headers },
+  });
+  if (!response.ok) {
+    const { error } = await response.json().catch(() => ({}));
+    throw new Error(error ?? `Server responded ${response.status}`);
   }
+  return response.status === 204 ? null : response.json();
 }
 
-export function saveItems(userId, items) {
-  localStorage.setItem(storageKey(userId), JSON.stringify(items));
-}
+export const listItems = (apiFetch) => request(apiFetch, "/items");
 
-export function rawStorage(userId) {
-  return localStorage.getItem(storageKey(userId)) ?? "[]";
-}
+export const createItem = (apiFetch, item) =>
+  request(apiFetch, "/items", { method: "POST", body: JSON.stringify(item) });
+
+export const deleteItem = (apiFetch, id) => request(apiFetch, `/items/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 // doEncrypt may return a string or a Uint8Array; normalise to something JSON-safe.
 function serialise(ciphertext) {
@@ -57,12 +58,7 @@ export async function encryptItem(doEncrypt, category, { title, body }) {
   const [ciphertext] = await doEncrypt([
     { data: JSON.stringify({ title, body }), tags: [category.tag] },
   ]);
-  return {
-    id: crypto.randomUUID(),
-    category: category.id,
-    createdAt: new Date().toISOString(),
-    ciphertext: serialise(ciphertext),
-  };
+  return { category: category.id, ciphertext: serialise(ciphertext) };
 }
 
 export async function decryptItem(doDecrypt, category, item) {

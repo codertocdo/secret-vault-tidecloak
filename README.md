@@ -60,18 +60,33 @@ Without TideCloak this design would collapse into "the server keeps the key". In
 **What the prototype shows today (demo mode):**
 
 1. **Encrypt & save.** A note or a set of recovery codes is encrypted in the browser before it is stored.
-2. **What storage sees.** One click shows the raw stored records: opaque ciphertext, with no titles and no plaintext.
-3. **Unlock with auto-lock.** Secrets are sealed by default. Unlock decrypts on demand, and the item re-locks after 30 seconds.
+2. **What storage sees.** One click shows the raw records held by the API server: opaque ciphertext, with no titles and no plaintext.
+3. **Unlock with auto-lock.** Secrets are sealed by default. Unlock decrypts on demand. An item re-locks after 30 seconds or as soon as you switch tabs. Copied secrets are wiped from the clipboard after 30 seconds.
 4. **The key interaction: revoke one permission.** In the simulated admin console, revoke *Recovery codes → Can decrypt*. Recovery codes now refuse to decrypt, at the crypto layer and not only in the UI, while personal notes still open. Grant the role again and they open.
 
 ## How the two modes work
 
 `src/auth.jsx` exposes a single hook, `useVaultAuth()`, with the same surface as `useTideCloak()`. At startup the app looks for `public/tidecloak.json`:
 
-| Mode | When | Login & roles | Encryption |
-|---|---|---|---|
-| **TideCloak** | `public/tidecloak.json` exists | Real TideCloak realm roles | Real `doEncrypt` / `doDecrypt` via the Tide network |
-| **Demo** (labelled in the UI) | No adapter config | A single local demo user. Roles are toggled in a simulated admin console. | Local AES-GCM (WebCrypto). The category tag is bound as associated data, and every call checks the matching `_tide_<tag>.self*` role. |
+| Mode | When | Login & roles | Encryption | API authentication |
+|---|---|---|---|---|
+| **TideCloak** | `public/tidecloak.json` exists | Real TideCloak realm roles | Real `doEncrypt` / `doDecrypt` via the Tide network | Access token sent with `secureFetch`. The server verifies the signature against the realm JWKS, plus issuer and expiry. |
+| **Demo** (labelled in the UI) | No adapter config | A single local demo user. Roles are toggled in a simulated admin console. | Local AES-GCM (WebCrypto). The category tag is bound as associated data, and every call checks the matching `_tide_<tag>.self*` role. | Fixed demo header. |
+
+The browser and the API server pick the mode the same way, by checking whether `public/tidecloak.json` exists.
+
+### Architecture
+
+```
+Browser (React)                                   API server (Express)
+  plaintext ──doEncrypt──► ciphertext ──POST /api/items──► validates shape, assigns id/owner
+                                                             └─► server/data/vault.json (ciphertext only)
+  plaintext ◄──doDecrypt── ciphertext ◄──GET /api/items───  returns the caller's records only
+     ▲
+     └── succeeds only if the session holds _tide_<category>.selfdecrypt
+```
+
+The server never receives plaintext and never holds a key, so it **cannot** decrypt anything it stores.
 
 Demo mode exists only so the product can be demonstrated while the Tide network is unavailable. **It is not secure.** Its key is derived locally, which is exactly the trust problem TideCloak removes.
 
@@ -83,7 +98,8 @@ Demo mode exists only so the product can be demonstrated while the Tide network 
 
 ```bash
 npm install
-npm run dev
+npm run dev     # starts the API (port 3001) and the web app (port 5173)
+npm test        # backend tests, including "plaintext never reaches disk"
 ```
 
 Open http://localhost:5173 and click **Log in (demo)**.
@@ -109,18 +125,26 @@ Open http://localhost:5173 and click **Log in (demo)**.
 
 ```
 src/
-  main.jsx     Detects the mode and mounts the app
-  auth.jsx     useVaultAuth(): TideCloak bridge or demo provider
-  vault.js     Categories/tags, role names, encrypt/decrypt helpers, ciphertext-only storage
-  App.jsx      UI: tabs, permission badges, items, auto-lock, storage inspector, demo role panel
+  main.jsx       Detects the mode and mounts the app
+  auth.jsx       useVaultAuth(): TideCloak bridge or demo provider, plus an authenticated apiFetch
+  vault.js       Categories/tags, role names, encrypt/decrypt helpers, API client
+  App.jsx        UI: tabs, permission badges, items, auto-lock, storage inspector, demo role panel
   style.css
+server/
+  index.js       Entry point: picks tide/demo auth and listens on :3001
+  app.js         Routes: GET/POST /api/items, DELETE /api/items/:id, GET /api/health
+  auth.js        TideCloak JWT verification (jose + realm JWKS) or demo header
+  store.js       Ciphertext-only JSON file store (atomic write-then-rename)
+  app.test.js    node:test suite
 ```
 
 ## Security notes and limitations
 
-- Only ciphertext is written to storage. Titles are encrypted together with bodies.
-- Storage is browser `localStorage`, treated as untrusted. A shared backend would store the same ciphertext records.
+- Only ciphertext reaches the server. Titles are encrypted together with bodies.
+- The API stores only whitelisted fields: category and ciphertext. It assigns owner, id and timestamp itself, and every read or delete is scoped to the caller's own records.
 - In TideCloak mode, role changes take effect after the next sign-in, because roles are carried in the token.
+- If the TideCloak client enforces DPoP, the server checks the token but **does not yet verify the DPoP proof**.
+- Demo-mode API authentication is a fixed header. It exists for local demonstration only.
 - The TideCloak integration was written against `@tidecloak/react` 0.14.33. Because of the licence-provisioning outage it **has not yet been verified end-to-end** against a live Tide-enabled realm.
 
 ## Video

@@ -35,7 +35,8 @@ export function VaultAuthProvider({ mode, children }) {
 
 function TideBridge({ children }) {
   const tide = useTideCloak();
-  const value = useMemo(() => ({ ...tide, mode: "tide" }), [tide]);
+  // secureFetch attaches the access token (and a DPoP proof when the client requires it).
+  const value = useMemo(() => ({ ...tide, mode: "tide", apiFetch: tide.secureFetch }), [tide]);
   return <VaultAuthContext.Provider value={value}>{children}</VaultAuthContext.Provider>;
 }
 
@@ -102,6 +103,10 @@ function DemoProvider({ children }) {
       login: async () => setAuthenticated(true),
       logout: async () => setAuthenticated(false),
       getValueFromToken: (key) => (authenticated ? DEMO_USER[key] : undefined),
+      apiFetch: (url, init = {}) => fetch(url, {
+        ...init,
+        headers: { ...init.headers, authorization: `Demo ${DEMO_USER.sub}` },
+      }),
       hasRealmRole,
       demoRoles: roles,
       toggleDemoRole: (role) => setRoles((current) => (
