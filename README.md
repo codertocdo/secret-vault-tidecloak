@@ -4,7 +4,7 @@
 
 ## Project overview
 
-**Secret Vault keeps your most sensitive notes and recovery codes encrypted under keys that no single party holds. It opens them only while your session carries the right permission.**
+**Secret Vault keeps your personal notes, recovery codes and other sensitive information encrypted under keys that no single party holds. It opens them only while your session carries the right permission.**
 
 Built with [TideCloak](https://tide.org/tidecloak?utm_source=github&utm_medium=readme&utm_campaign=unlocked).
 
@@ -41,7 +41,7 @@ With TideCloak, encryption and decryption are authorised by the **Tide network**
 - **Families and small teams** can, for example, give a partner decrypt access to the `recovery` category for emergencies, then revoke it later without re-encrypting anything.
 - **Organisations** can hold break-glass credentials that remain unreadable to their own administrators until a policy grants access.
 
-**Concrete example.** Minh's laptop is stolen. The thief has a copy of the browser storage. With a normal notes app, the recovery codes for Minh's bank and email are now exposed. With Secret Vault the copy contains only ciphertext, and the decrypt roles live in Minh's TideCloak session, not on the device. Minh revokes the session and the codes stay sealed.
+**Concrete example.** An attacker dumps the database of the service where Minh keeps the recovery codes for his bank and email. With a normal notes app the attacker, or a curious administrator, can now read everything. With Secret Vault the dump contains only ciphertext. The server never had a key, and decryption requires Minh's own TideCloak session holding the `recovery` decrypt role. The codes stay sealed.
 
 ### 4. Why TideCloak matters
 
@@ -50,7 +50,8 @@ With TideCloak, encryption and decryption are authorised by the **Tide network**
 | Sign-in | `TideCloakContextProvider` + `useTideCloak()` (`login`, `logout`, `getValueFromToken`). |
 | Encrypt before storing | `doEncrypt([{ data, tags: [category] }])` encrypts the title and body together, so even item names never leave the browser in plaintext. |
 | Decrypt only with permission | `doDecrypt([{ encrypted, tags: [category] }])` succeeds only if the session holds the realm role `_tide_<category>.selfdecrypt`. |
-| Per-category control | Four realm roles: `_tide_notes.selfencrypt`, `_tide_notes.selfdecrypt`, `_tide_recovery.selfencrypt`, `_tide_recovery.selfdecrypt`. |
+| Per-category control | Three categories, each with its own tag and two realm roles. That gives six roles: `_tide_notes.selfencrypt` / `.selfdecrypt`, `_tide_recovery.selfencrypt` / `.selfdecrypt`, and `_tide_sensitive.selfencrypt` / `.selfdecrypt`. |
+| Server trusts nothing it cannot verify | The API verifies the TideCloak access token against the realm JWKS, checks that it was issued to this app (`azp`), and refuses to file a record under a category whose `selfencrypt` role the token lacks. |
 | No single key holder | Keys are managed by the Tide network rather than by our app or our storage layer. |
 
 Without TideCloak this design would collapse into "the server keeps the key". In that world, role checks are only UI and can be bypassed by anyone with database and key access.
@@ -117,7 +118,7 @@ Open http://localhost:5173 and click **Log in (demo)**.
    - App (client ID): `secret-vault`
    - Redirect URI: `http://localhost:5173/*`
    - Web origin: `http://localhost:5173`
-3. Create the four realm roles listed above. Assign them to your user, then approve the change request.
+3. Create the six realm roles listed above. Assign them to your user, then approve the change request.
 4. Download `tidecloak.json` from the app and save it as `public/tidecloak.json`. This file is git-ignored.
 5. Run `npm install && npm run dev`, open http://localhost:5173, and click **Log in with TideCloak**.
 

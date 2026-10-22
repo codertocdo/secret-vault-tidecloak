@@ -17,7 +17,15 @@ export const CATEGORIES = [
     label: "Recovery codes",
     hint: "2FA backup codes, seed phrases, account recovery keys.",
   },
+  {
+    id: "sensitive",
+    tag: "sensitive",
+    label: "Sensitive info",
+    hint: "ID and passport numbers, bank details, medical or legal information.",
+  },
 ];
+
+export const MAX_BODY_LENGTH = 20000;
 
 export const encryptRole = (tag) => `_tide_${tag}.selfencrypt`;
 export const decryptRole = (tag) => `_tide_${tag}.selfdecrypt`;
@@ -41,12 +49,16 @@ export const createItem = (apiFetch, item) =>
 
 export const deleteItem = (apiFetch, id) => request(apiFetch, `/items/${encodeURIComponent(id)}`, { method: "DELETE" });
 
+export function bytesToBase64(bytes) {
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+}
+
 // doEncrypt may return a string or a Uint8Array; normalise to something JSON-safe.
 function serialise(ciphertext) {
   if (typeof ciphertext === "string") return { format: "string", value: ciphertext };
-  let binary = "";
-  ciphertext.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return { format: "bytes", value: btoa(binary) };
+  return { format: "bytes", value: bytesToBase64(ciphertext) };
 }
 
 function deserialise({ format, value }) {

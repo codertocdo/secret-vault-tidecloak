@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useVaultAuth } from "./auth.jsx";
 import {
-  CATEGORIES, createItem, decryptItem, decryptRole, deleteItem, encryptItem, encryptRole, listItems,
+  CATEGORIES, MAX_BODY_LENGTH, createItem, decryptItem, decryptRole, deleteItem, encryptItem, encryptRole, listItems,
 } from "./vault.js";
+
+const PLACEHOLDERS = {
+  notes: { title: "Title", body: "Write your secret…" },
+  recovery: { title: "e.g. GitHub backup codes", body: "One code per line" },
+  sensitive: { title: "e.g. Passport", body: "Number, expiry date, issuing country…" },
+};
 
 const AUTO_LOCK_SECONDS = 30;
 const CLIPBOARD_CLEAR_SECONDS = 30;
@@ -65,7 +71,8 @@ function Landing() {
     <section className="hero">
       <h1>Secrets nobody else can open.<br />Not even us.</h1>
       <p>
-        Notes and recovery codes are encrypted in your browser by TideCloak before they are stored.
+        Notes, recovery codes and other sensitive information are encrypted in your browser by TideCloak
+        before they are stored.
         They decrypt only while your session holds the right permission.
       </p>
     </section>
@@ -166,6 +173,7 @@ function Vault({ tide }) {
             category={category}
             canDecrypt={canDecrypt}
             doDecrypt={doDecrypt}
+            mode={tide.mode}
             onRemove={() => removeItem(item.id)}
           />
         ))}
@@ -206,14 +214,18 @@ function NewItemForm({ category, disabled, onSubmit }) {
   return (
     <form className="new-item" onSubmit={submit}>
       <input
-        placeholder={category.id === "recovery" ? "e.g. GitHub backup codes" : "Title"}
+        aria-label="Title"
+        placeholder={PLACEHOLDERS[category.id].title}
+        maxLength={200}
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         disabled={disabled || busy}
       />
       <textarea
-        placeholder={category.id === "recovery" ? "One code per line" : "Write your secret…"}
+        aria-label="Secret content"
+        placeholder={PLACEHOLDERS[category.id].body}
         rows={4}
+        maxLength={MAX_BODY_LENGTH}
         value={body}
         onChange={(event) => setBody(event.target.value)}
         disabled={disabled || busy}
@@ -230,7 +242,7 @@ function NewItemForm({ category, disabled, onSubmit }) {
   );
 }
 
-function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
+function VaultItem({ item, category, canDecrypt, doDecrypt, mode, onRemove }) {
   const [plain, setPlain] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [error, setError] = useState("");
@@ -252,7 +264,12 @@ function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
   }, []);
 
   async function copy() {
-    await navigator.clipboard.writeText(plain.body);
+    try {
+      await navigator.clipboard.writeText(plain.body);
+    } catch (copyError) {
+      setError(`Could not copy: ${errorMessage(copyError)}`);
+      return;
+    }
     setCopied(true);
     const copiedText = plain.body;
     setTimeout(async () => {
@@ -288,7 +305,7 @@ function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
       setSecondsLeft(AUTO_LOCK_SECONDS);
       timer.current = setInterval(() => setSecondsLeft((value) => Math.max(0, value - 1)), 1000);
     } catch (decryptError) {
-      setError(`Decryption refused by TideCloak: ${errorMessage(decryptError)}`);
+      setError(`Decryption refused${mode === "tide" ? " by TideCloak" : ""}: ${errorMessage(decryptError)}`);
     } finally {
       setBusy(false);
     }
@@ -298,7 +315,8 @@ function VaultItem({ item, category, canDecrypt, doDecrypt, onRemove }) {
     <article className={`item ${plain ? "open" : ""}`}>
       <div className="item-head">
         <div>
-          <strong>{plain ? plain.title : "Locked item"}</strong>
+          {/* Titles are encrypted too, so locked items are told apart by a short record id. */}
+          <strong>{plain ? plain.title : `Locked item · #${item.id.slice(0, 6)}`}</strong>
           <small>{new Date(item.createdAt).toLocaleString()}</small>
         </div>
         <div className="item-actions">

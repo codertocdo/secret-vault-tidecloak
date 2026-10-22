@@ -42,6 +42,28 @@ test("stores ciphertext only and drops any extra fields", async () => {
   assert.ok(!onDisk.includes("1111-2222"), "plaintext body must never reach disk");
 });
 
+test("refuses to store under a category the caller cannot encrypt", async () => {
+  const app = createApp({
+    store: createStore(join(mkdtempSync(join(tmpdir(), "secret-vault-")), "vault.json")),
+    authenticate: async () => ({ owner: "user-1", roles: ["_tide_notes.selfencrypt"] }),
+    mode: "tide",
+  });
+  const roleServer = app.listen(0);
+  await new Promise((resolve) => roleServer.once("listening", resolve));
+  const url = `http://localhost:${roleServer.address().port}/api/items`;
+  const send = (category) => fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ category, ciphertext: { format: "string", value: "x" } }),
+  });
+  try {
+    assert.equal((await send("notes")).status, 201);
+    assert.equal((await send("recovery")).status, 403);
+  } finally {
+    roleServer.close();
+  }
+});
+
 test("validates category and ciphertext shape", async () => {
   assert.equal((await post({ category: "passwords", ciphertext: { format: "string", value: "x" } })).status, 400);
   assert.equal((await post({ category: "notes", ciphertext: "plain text" })).status, 400);

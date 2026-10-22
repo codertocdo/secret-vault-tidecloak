@@ -6,6 +6,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { TideCloakContextProvider, useTideCloak } from "@tidecloak/react";
+import { CATEGORIES, bytesToBase64, decryptRole, encryptRole } from "./vault.js";
 
 const VaultAuthContext = createContext(null);
 
@@ -46,13 +47,9 @@ function TideBridge({ children }) {
 
 const DEMO_USER = { sub: "demo-user-0001", preferred_username: "demo.user" };
 const SESSION_KEY = "secret-vault:demo-session";
-const ROLES_KEY = "secret-vault:demo-roles";
-export const DEMO_ROLES = [
-  "_tide_notes.selfencrypt",
-  "_tide_notes.selfdecrypt",
-  "_tide_recovery.selfencrypt",
-  "_tide_recovery.selfdecrypt",
-];
+// Versioned so roles saved before the "sensitive" category existed are not reused.
+const ROLES_KEY = "secret-vault:demo-roles:v2";
+const DEMO_ROLES = CATEGORIES.flatMap(({ tag }) => [encryptRole(tag), decryptRole(tag)]);
 
 function readJson(key, fallback) {
   try {
@@ -74,7 +71,6 @@ async function demoKey(userId) {
   );
 }
 
-const toBase64 = (bytes) => btoa(String.fromCharCode(...bytes));
 const fromBase64 = (text) => Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
 // Tags are bound as associated data, so a ciphertext cannot be decrypted under another tag.
 const tagsAad = (tags) => new TextEncoder().encode([...tags].sort().join("|"));
@@ -120,7 +116,7 @@ function DemoProvider({ children }) {
           const sealed = new Uint8Array(await crypto.subtle.encrypt(
             { name: "AES-GCM", iv, additionalData: tagsAad(tags) }, key, new TextEncoder().encode(data),
           ));
-          return `demo:${toBase64(iv)}:${toBase64(sealed)}`;
+          return `demo:${bytesToBase64(iv)}:${bytesToBase64(sealed)}`;
         }));
       },
       doDecrypt: async (entries) => {
