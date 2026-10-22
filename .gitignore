@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+.env.*
+# Per-environment TideCloak adapter config, downloaded from the TideCloak admin console
+public/tidecloak.json
