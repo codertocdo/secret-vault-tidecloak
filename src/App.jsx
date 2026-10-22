@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DEMO_ROLES, useVaultAuth } from "./auth.jsx";
+import { useVaultAuth } from "./auth.jsx";
 import {
   CATEGORIES, decryptItem, decryptRole, encryptItem, encryptRole, loadItems, rawStorage, saveItems,
 } from "./vault.js";
@@ -153,7 +153,9 @@ function Vault({ tide }) {
             onRemove={() => removeItem(item.id)}
           />
         ))}
-        {visibleItems.length === 0 && <p className="empty">Nothing stored here yet.</p>}
+        {visibleItems.length === 0 && (
+          <p className="empty">Nothing stored here yet. Save one above, then use Unlock to read it back.</p>
+        )}
       </div>
     </main>
   );
@@ -279,12 +281,18 @@ function DemoRolePanel({ roles, onToggle }) {
   return (
     <details className="demo-roles">
       <summary>Simulated admin console: grant or revoke realm roles</summary>
-      <div className="demo-role-list">
-        {DEMO_ROLES.map((role) => (
-          <label key={role}>
-            <input type="checkbox" checked={roles.includes(role)} onChange={() => onToggle(role)} />
-            <code>{role}</code>
-          </label>
+      <div className="demo-role-groups">
+        {CATEGORIES.map((category) => (
+          <div className="demo-role-group" key={category.id}>
+            <strong>{category.label}</strong>
+            {[["Can encrypt (save)", encryptRole(category.tag)], ["Can decrypt (read)", decryptRole(category.tag)]].map(([label, role]) => (
+              <label key={role}>
+                <input type="checkbox" checked={roles.includes(role)} onChange={() => onToggle(role)} />
+                <span>{label}</span>
+                <code>{role}</code>
+              </label>
+            ))}
+          </div>
         ))}
       </div>
     </details>
